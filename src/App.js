@@ -2,7 +2,7 @@ import React, { Component } from 'react';
 import { Container } from 'reactstrap';
 import { getTokenOrRefresh } from './token_util';
 import './custom.css'
-import { ResultReason } from 'microsoft-cognitiveservices-speech-sdk';
+import { ResultReason, CancellationReason } from 'microsoft-cognitiveservices-speech-sdk';
 
 const speechsdk = require('microsoft-cognitiveservices-speech-sdk')
 
@@ -35,21 +35,68 @@ export default class App extends Component {
         const recognizer = new speechsdk.SpeechRecognizer(speechConfig, audioConfig);
 
         this.setState({
-            displayText: 'speak into your microphone...'
+            displayText: ''
         });
 
-        recognizer.recognizeOnceAsync(result => {
-            let displayText;
-            if (result.reason === ResultReason.RecognizedSpeech) {
-                displayText = `RECOGNIZED: Text=${result.text}`
-            } else {
-                displayText = 'ERROR: Speech was cancelled or could not be recognized. Ensure your microphone is working properly.';
+        // From Azure docs https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/get-started-speech-to-text?tabs=windowsinstall&pivots=programming-language-nodejs
+        recognizer.recognizing = (s, e) => {
+            console.log(`RECOGNIZING: Text=${e.result.text}`);
+        };
+        
+        recognizer.recognized = (s, e) => {
+            if (e.result.reason === ResultReason.RecognizedSpeech) {
+                // console.log(`RECOGNIZED: Text=${e.result.text}`);
+                this.setState(prevState => ({
+                    displayText: [...prevState.displayText, e.result.text + ' ']
+                }));
             }
+            else if (e.result.reason === ResultReason.NoMatch) {
+                console.log("NOMATCH: Speech could not be recognized.");
+            }
+        };
+        
+        recognizer.canceled = (s, e) => {
+            console.log(`CANCELED: Reason=${e.reason}`);
+        
+            if (e.reason === CancellationReason.Error) {
+                console.log(`"CANCELED: ErrorCode=${e.errorCode}`);
+                console.log(`"CANCELED: ErrorDetails=${e.errorDetails}`);
+                console.log("CANCELED: Did you update the key and location/region info?");
+            }
+        
+            recognizer.stopContinuousRecognitionAsync();
+        };
+        
+        recognizer.sessionStopped = (s, e) => {
+            console.log("\n    Session stopped event.");
+            recognizer.stopContinuousRecognitionAsync();
+        };
 
-            this.setState({
-                displayText: displayText
-            });
+        recognizer.startContinuousRecognitionAsync(result => {
+            // let displayText;
+            // if (result.reason === ResultReason.RecognizedSpeech) {
+            //     displayText = `RECOGNIZED: Text=${result.text}`;
+            // } else {
+            //     displayText = 'ERROR: Speech was cancelled or could not be recognized. Ensure your microphone is working properly.';
+            // }
+            // // word processing
+            // const displayTextArray = result.text.split(" ");
+            // console.log(displayTextArray)
+            // let word = "test";
+            // if (displayTextArray.includes(word)) {
+            //     displayText = "Test word detected"
+            // } else {
+            //     displayText = result.text
+            // }
+
+            // this.setState({
+            //     displayText: displayText
+            // });
         });
+
+        // Doesn't work how to close from inside async
+        setTimeout(() => recognizer.stopContinuousRecognitionAsync, 5000);
+
     }
 
     async fileChange(event) {
